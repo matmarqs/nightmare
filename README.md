@@ -1,2 +1,3 @@
 # nightmare
-Reverse engineering
+
+Solving reverse engineering exercises from [Nightmare](https://guyinatuxedo.github.io/).
