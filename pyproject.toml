@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "pwntools>=4.0.0",
+    "pwn>=1.0",
 ]
 
 #[project.optional-dependencies]
