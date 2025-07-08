@@ -1,14 +1,15 @@
 #include <stdlib.h>
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 /* glibc stack smashing detection */
-extern void __stack_chk_fail(void) __attribute__((noreturn));
+//extern void __stack_chk_fail(void) __attribute__((noreturn));
 
 bool validate(char *input) {
-    long in_FS_OFFSET = 0;
-    long stack_canary = *(long *)(in_FS_OFFSET + 0x28);
+    //long in_FS_OFFSET = 0;
+    //long stack_canary = *(long *)(in_FS_OFFSET + 0x28);
     int flag[14];
     bool check;
     size_t input_len;
@@ -40,10 +41,10 @@ bool validate(char *input) {
     } while (true);
 
 stack_check:
-    // Verify stack canary hasn't been modified
-    if (stack_canary != *(long *)(in_FS_OFFSET + 0x28)) {
-        __stack_chk_fail();
-    }
+    //// Verify stack canary hasn't been modified
+    //if (stack_canary != *(long *)(in_FS_OFFSET + 0x28)) {
+    //    __stack_chk_fail();
+    //}
     return check;
 }
 
