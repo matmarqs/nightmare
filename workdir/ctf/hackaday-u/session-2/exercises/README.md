@@ -160,3 +160,217 @@ print(string)
 ```
 
 This outputs the keycode `'J0(kb$!R'`.
+
+
+# `func-example-1`
+
+All the code is doing is getting the lower and uppercase parts of the input string. The passcode will pass if their lengths are equal.
+Therefore, an input like `aB` is enough.
+
+```c
+int main(int argc,char **argv) {
+  int ret;
+  char *upper;
+  char *lower;
+  size_t up_len;
+  size_t lo_len;
+  
+  if (argc == 2) {
+    upper = getUpperCase(argv[1]);
+    lower = getLowerCase(argv[1]);
+    up_len = strlen(upper);
+    lo_len = strlen(lower);
+    if (up_len == lo_len) {
+      puts("Passcode generator passed, good job!\r");
+      free(upper);
+      free(lower);
+      ret = 0;
+    }
+    else {
+      puts("Passcode doesn\'t have enough variety! Please try again\r");
+      free(upper);
+      free(lower);
+      ret = -1;
+    }
+  }
+  else {
+    puts("Please generate a passcode for system usage!\r");
+    ret = -1;
+  }
+  return ret;
+}
+```
+
+The functions `getUpperCase` and `getLowerCase` simply get the upper and lowercase parts of the input string.
+
+```c
+char * getUpperCase(char *input) {
+  size_t input_len;
+  char *uppercase;
+  int i;
+  int count;
+  
+  input_len = strlen(input);
+                    /* allocating sizeof(char) * input_len */
+  uppercase = (char *)calloc((long)(int)input_len,1);
+  count = 0;
+  for (i = 0; i < (int)input_len; i = i + 1) {
+                    /* check if it is uppercase 'A' <= c <= 'Z' */
+    if (('@' < input[i]) && (input[i] < '[')) {
+      uppercase[count] = input[i];
+      count = count + 1;
+    }
+  }
+  return uppercase;
+}
+
+char * getLowerCase(char *input) {
+  size_t input_len;
+  char *lowercase;
+  int i;
+  int count;
+  
+  input_len = strlen(input);
+  lowercase = (char *)calloc((long)(int)input_len,1);
+  count = 0;
+  for (i = 0; i < (int)input_len; i = i + 1) {
+                    /* check if it is lowercase, 'a' <= c <= 'z' */
+    if (('`' < input[i]) && (input[i] < '{')) {
+      lowercase[count] = input[i];
+      count = count + 1;
+    }
+  }
+  return lowercase;
+}
+```
+
+
+# `heap-example-1`
+
+```c
+int main(int argc,char **argv) {
+  int ret;
+  size_t input_len;
+  char *upper;
+  int i;
+  int count;
+  
+  if (argc == 2) {
+    input_len = strlen(argv[1]);
+    upper = (char *)calloc((long)(int)input_len,1);
+    count = 0;
+    for (i = 0; i < (int)input_len; i = i + 1) {
+      if (('@' < argv[1][i]) && (argv[1][i] < '[')) {
+        upper[count] = argv[1][i];
+        count = count + 1;
+      }
+    }
+    if (count == 12) {
+      printf("The result is: %s\r\n",upper);
+    }
+    else {
+      puts("Not quite what we\'re looking for ... maybe try again?\r");
+    }
+    free(upper);
+    ret = 0;
+  }
+  else {
+    puts("Please provide a string!\r");
+    ret = -1;
+  }
+  return ret;
+}
+```
+
+Basically, the result is the uppercase part of the input string. If the length is of the uppercase part is 12, it outputs positively.
+
+
+# `array-example`
+
+
+```c
+int main(int argc,char **argv) {
+  int index;
+  size_t keyword_len;
+  char curr;
+  char next;
+  uint i;
+  
+  if (argc == 3) {
+    index = atoi(argv[1]);
+                    /* 0 <= argv1 <= 4 */
+    if (index == -1 || index > 4) {
+      puts("Improper index provided, try again!\r");
+      index = -1;
+    }
+    else {
+      keyword_len = strlen((char *)keywords[index]);
+      for (i = 0; i < keyword_len; i++) {
+        curr = keywords[index][i];
+        if (i == keyword_len - 1) {
+          next = keywords[index][0];
+        }
+        else {
+          next = keywords[index][i+1];
+        }
+        if (next < c) {
+          curr = curr - next;
+        }
+        else {
+          curr = next - c;
+        }
+        curr = curr + '`';
+                    /* transformed char has to match input keycode chars */
+        if (c != argv[2][i]) {
+          printf("Wrong value detected at character %x!\r\n", i);
+          return -1;
+        }
+      }
+      printf("Congratulations, you\'ve unlocked the code for value %x, can you get them all?\r\n", index + 1);
+      index = 0;
+    }
+  }
+  else {
+    puts("Please provide a password index and keycode, ex: 1 p@55w0rd!\r");
+    index = -1;
+  }
+  return index;
+}
+```
+
+In Ghidra we see the `keycodes` array, which we declare as an array and transform the data type to `char **`. Then we reimplement the algorithm below in Python to get all the 5 codes:
+
+```py
+# solve_array.py
+keycodes = ["hackadayu", "software", "reverse", "engineering", "ghidra"]
+
+def transform(i, keyword):
+    curr = keyword[i]
+
+    if i == len(keyword) - 1:
+        next = keyword[0]
+    else:
+        next = keyword[i+1]
+
+    if ord(next) < ord(curr):
+        c = ord(curr) - ord(next)
+    else:
+        c = ord(next) - ord(curr)
+
+    return chr(c + ord('`'))
+
+for index in range(5):
+    result = ""
+    for i in range(len(keycodes[index])):
+        result += transform(i, keycodes[index])
+    print(result)
+```
+
+```bash
+$ python3 solve_array.py
+gbhjccxdm
+dincvqmn
+mqqmanm
+igbei`miegb
+aaenqf
+```

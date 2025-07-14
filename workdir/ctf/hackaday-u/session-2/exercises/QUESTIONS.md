@@ -56,18 +56,49 @@ Yes, it is `J0(kb$!R`. To get it, just apply the operations with the global vari
 # `func-example-1`: Exercise 1
 
 * How many functions does the auto analysis discover?
+
+Other than `main`, it discovers `getLowerCase` and `getUpperCase`.
+
 * How many local variables are present in the each function?
+
+Each of the two functions `getLowerCase` and `getUpperCase` have 4 local variables.
+
 * What are their values?
+
+The values are: `size_t input_len = strlen(input)`, `int count = <how_many_case_chars>`, `int i = <iterator>` and `char *uppercase = <case_chars_of_input>`.
+
 * Do any of these functions take arguments?
+
+Yes.
+
 * If so, what are the arguments?
+
+They only take one argument, the `char *input`.
 
 # `heap-example-1`: Exercise 1
 
 * How much memory is being allocated via malloc?
+
+It is allocated `strlen(argv[1]) * sizeof(char)` bytes.
+
 * How is this program different than the loop example?
+
+It gets all the chars in an allocated `(char *)` pointer. The loop example just count the uppercase chars.
 
 # `array-example`: Exercise
 
 * How many different arrays are in use?
+
+Strictly speaking, there is the `char **argv` array and the `char **keywords` only.
+
+Edit: Actually, there is an additional array `unsigned char bytecodes[5]`, but it is not used at all.
+
 * What is their scope, are they global?
+
+The `char **keywords` is global, and of course `char **argv` is local to the `main()` function.
+
+Edit: The array `bytecodes` is global.
+
 * Can you solve the password for all 4 index values?
+
+Yes, I solved in the `solve_array.py`.
