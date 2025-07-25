@@ -184,3 +184,160 @@ YMbYM`]_
 $ ./structs 1 matmarqs 'YMbYM`]_'
 Correct! Access granted!
 ```
+
+
+# `pointers`
+
+Using Ghidra, we get
+
+```c
+typedef struct {
+    int key;
+    char *username;
+    char *password;
+    int realKey;
+} User;
+
+int main(int argc,char **argv) {
+    int key;
+    size_t len;
+    int i;
+    User user;
+    char *password;
+    char *username;
+
+    if (argc != 4) {
+        puts("Please provide your key, username and password!\r\nExample: 12738 wrongbaud P@55W0rd1\r");
+        return -1;
+    }
+
+    key = atoi(argv[1]);
+    if (key == 0) {
+        puts("Improper key provided, please provide and integer key!\r");
+        return -1;
+
+    username = argv[2];
+    len = strlen(username);
+    if (len < 8 || len > 597) {
+        puts("Improper username provided, please check the length!\r");
+        return -1;
+    }
+
+    password = argv[3];
+    len = strlen(password);
+    if (len < 8 || len > 597) {
+        puts("Improper password provided, please check the length!\r");
+        return -1;
+    }
+
+    user.key = key;
+    user.realKey = add_mult_8(key,key + 0xbeef);
+    user.username = username;
+    user.password = password;
+    swapNames(&user.username,&user.password);
+    gen_password(&user);
+    i = 0;
+    while( true ) {
+        len = strlen(user.password);
+        if (i >= len) {
+            puts("Correct! Access granted!\r");
+            free(user.password);
+            return 0;
+        }
+        if (username[i] != user.password[i]) break;
+        i = i + 1;
+    }
+    puts("Invalid character in password detected, exiting now!\r");
+    return -1;
+}
+
+int add_mult_8(int a,int b) {
+  return (b + a) * 8;
+}
+
+void gen_password(User *user) {
+  size_t len;
+  char *gen_passwd;
+  int i;
+
+  len = strlen(user->username);
+  gen_passwd = (char *)malloc((long)(int)len);
+  for (i = 0; i < (int)len; i = i + 1) {
+    gen_passwd[i] = (byte)user->realKey ^ (char)user->key + user->username[i];
+    gen_passwd[i] = gen_passwd[i] + -0x13;
+  }
+  user->password = gen_passwd;
+  return;
+}
+
+void swapNames(char **a,char **b) {
+  char *aux = malloc(8);
+  aux = *(char *)a;
+  *(char *)a = *(char *)b;
+  *(char *)b = aux;
+  return;
+}
+```
+
+Here is the code to generate the password:
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+
+typedef struct {
+    int key;
+    char *username;
+    char *password;
+    int realKey;
+} User;
+
+void gen_password(User *user) {
+    size_t len;
+    char *gen_passwd;
+    int i;
+
+    len = strlen(user->username);
+    gen_passwd = (char *)malloc(len);
+    for (i = 0; i < len; i++) {
+        gen_passwd[i] = user->realKey ^ (user->key + user->username[i]);
+        gen_passwd[i] = gen_passwd[i] - 0x13;
+    }
+    gen_passwd[len] = '\0';
+    user->password = gen_passwd;
+    return;
+}
+
+int add_mult_8(int a,int b) {
+  return (b + a) * 8;
+}
+
+void swapNames(char **a, char **b) {
+    char *aux = *a;
+    *a = *b;
+    *b = aux;
+}
+
+int main() {
+    User user;
+    user.key = 1;
+    user.realKey = add_mult_8(user.key,user.key + 0xbeef);
+    user.username = strdup("matmarqs");
+    user.password = strdup("initial");  // Just placeholder
+    gen_password(&user);
+    for (size_t i = 0; i < strlen(user.password); i++) {
+        printf("\\x%02x", (unsigned char)user.password[i]);
+    }
+    printf("\n");
+}
+```
+
+To get access, we need to swap the username and password:
+```bash
+$ c gen_passwd_pointers.c
+\xd3\xd7\xea\xd3\xd7\xe8\xe7\xe9
+$ ./pointers 1 $(echo -e "\xd3\xd7\xea\xd3\xd7\xe8\xe7\xe9") "matmarqs"
+Correct! Access granted!
+```
+
