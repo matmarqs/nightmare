@@ -341,3 +341,213 @@ $ ./pointers 1 $(echo -e "\xd3\xd7\xea\xd3\xd7\xe8\xe7\xe9") "matmarqs"
 Correct! Access granted!
 ```
 
+# `syscall`
+
+The disassembly is:
+
+```asm
+mov    eax,0x2  ; open(char *filename, int flags, int mode) syscall
+movabs rdi,0x600124 ; "syscalls.txt"
+mov    rsi,QWORD PTR ds:0x600131    ; *0x600131 = 0x42, which is the flag O_CREAT | O_RDWR
+mov    rdx,QWORD PTR ds:0x600139    ; *0x600139 = 0x180, mode '600' = rw------- in Linux. octal 0600 = 0x180
+syscall
+mov    QWORD PTR ds:0x600141,rax    ; file descriptor is stored at 0x600141
+mov    eax,0x1  ; write(int fd, char *buf, size_t count) syscall
+mov    rdi,QWORD PTR ds:0x600141    ; file descriptor of file "syscalls.txt"
+movabs rsi,0x400114 ; buffer from which we write in the file, it has the string "hello-hackaday\0"
+mov    edx,0xe  ; write 14 bytes
+syscall
+mov    eax,0x3  ; close(int fd) syscall
+mov    rdi,QWORD PTR ds:0x600141    ; the file descriptor from before
+syscall
+mov    edi,0x0  ; exit(0)
+mov    eax,0x3c ; exit(int error_code) syscall
+syscall
+```
+
+* There are 4 syscalls performed: `open 2`, `write 1`, `close 3`, and `exit 60`.
+* The program just creates a file with read/write permissions (mode `600`) named `syscalls.txt` and
+writes `hello-hackaday` to it. It closes the file and `exit(0)`.
+* The entry point is `_start`.
+
+
+# `files`
+
+From Ghidra, we get:
+
+```c
+typedef struct {
+    int key;
+    char *name;
+    int dontUse;
+    char *pass;
+    int calcKey;
+} User;
+
+void gen_password(User *user) {
+  size_t len_username;
+  char *gen_pass;
+  int i;
+
+  len_username = strlen(user->name);
+  gen_pass = (char *)malloc((long)(int)len_username);
+  for (i = 0; i < (int)len_username; i = i + 1) {
+    gen_pass[i] = (byte)user->calcKey ^ (char)user->key + user->name[i];
+    gen_pass[i] = gen_pass[i] + -0x13;
+  }
+  user->pass = gen_pass;
+  return;
+}
+
+int add_mult_8(int a,int b) {
+  return (b + a) * 8;
+}
+
+int main(void) {
+  int ret;
+  ssize_t num_bytes;
+  size_t len_pass;
+  ulong ii;
+  int key;
+  int i;
+  int dont_use;
+  int key_fd;
+  int int_num_bytes;
+  int username_fd;
+  int password_fd;
+  char *username;
+  char *password;
+  User s_key;
+
+  key = 0;
+  dont_use = 0;
+                    /* "key.y" */
+  key_fd = open(keyFile,0);
+  if (key_fd == -1) {
+    puts("Could not find key file, please try again!\r");
+    ret = -1;
+  }
+  else {
+    num_bytes = read(key_fd,&key,4);
+    int_num_bytes = (int)num_bytes;
+    if (int_num_bytes < 4) {
+      puts("Not enough values in keyfile, please try again!\r");
+      ret = -1;
+    }
+    else {
+      dont_use = int_num_bytes + -1;
+      s_key.key = key;
+      s_key.dontUse = dont_use;
+                    /* uname.x */
+      username_fd = open(unameFile,0);
+      if (username_fd == -1) {
+        puts("Could not find username file, please try again!\r");
+        ret = -1;
+      }
+      else {
+        username = (char *)malloc(0x255);
+        num_bytes = read(username_fd,username,0x255);
+        int_num_bytes = (int)num_bytes;
+        if (int_num_bytes < 8) {
+          puts("Not enough values in keyfile, please try again!\r");
+          ret = -1;
+        }
+        else {
+                    /* pword.z */
+          password_fd = open(pwordFile,0);
+          if (password_fd == -1) {
+            puts("Could not find password file, please try again!\r");
+            ret = -1;
+          }
+          else {
+            password = (char *)malloc(0x255);
+            num_bytes = read(password_fd,password,0x255);
+            int_num_bytes = (int)num_bytes;
+            if (int_num_bytes < 8) {
+              puts("Not enough values in keyfile, please try again!\r");
+              ret = -1;
+            }
+            else {
+                    /* conteudo de verdade, quando os arquivos existem */
+              s_key.calcKey = add_mult_8(s_key.key,s_key.key + 0xbeef);
+              s_key.name = username;
+              s_key.pass = password;
+              gen_password(&s_key);
+              for (i = 0; ii = (ulong)i, len_pass = strlen(s_key.pass), ii < len_pass; i = i + 1) {
+                if (password[i] != s_key.pass[i]) {
+                  puts("Invalid character in password detected, exiting now!\r");
+                  return -1;
+                }
+              }
+              puts("Correct! Access granted!\r");
+              free(s_key.pass);
+              ret = 0;
+            }
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+```
+
+We just have to create the files `key.y`, `uname.x` and `pword.z` with respective `key`, `username` and `password` contents. We chose:
+
+* In `key.y`: `1111` (has to be length at least 4), which is transformed to the `int` value `0x31313131`.
+* In `uname.x`: `matmarqs`.
+* In `pword.z`: we generate it with the following C code
+
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+typedef struct {
+    int key;
+    char *name;
+    int dontUse;
+    char *pass;
+    int calcKey;
+} User;
+
+void gen_password(User *user) {
+  size_t len_username;
+  char *gen_pass;
+  int i;
+  
+  len_username = strlen(user->name);
+  gen_pass = (char *)malloc((long)(int)len_username);
+  for (i = 0; i < (int)len_username; i = i + 1) {
+    gen_pass[i] = user->calcKey ^ ((char)user->key + user->name[i]);
+    gen_pass[i] = gen_pass[i] + -0x13;
+  }
+  user->pass = gen_pass;
+  return;
+}
+
+int add_mult_8(int a,int b) {
+  return (b + a) * 8;
+}
+
+int main() {
+  User user;
+  user.key = 0x31313131;
+  user.name = strdup("matmarqs");
+  user.calcKey = add_mult_8(user.key, user.key + 0xbeef);
+  gen_password(&user);
+  printf("%s", user.pass);
+}
+```
+
+```bash
+$ gcc gen_passwd_files.c && ./a.out > pword.z
+$ ./files
+Correct! Access granted!
+$ xxd key.y
+00000000: 3131 3131                                1111
+$ xxd uname.x
+00000000: 6d61 746d 6172 7173                      matmarqs
+$ xxd pword.z
+00000000: 0307 1a03 0718 1719                      ........
+```
