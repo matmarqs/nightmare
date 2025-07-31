@@ -115,7 +115,7 @@ Therefore, in order to get the executable to output `"Good!"`, we have two alter
 
 ## Using the debugger `radare`
 
-```bash
+```
 [sekai@void crackmes.one]$ r2 -d ./noprelo __gmon_start__
 WARN: Relocs has not been applied. Please use `-e bin.relocs.apply=true` or `-e bin.cache=true` next time
 [0x7f36fd5c5cc0]> aa
@@ -250,7 +250,7 @@ The `0x0000125d  je 0x127c` will be taken, and program will reach the `real_main
 
 From this, we get the program to output `"Good!"` when we run `./noprelo_patched "__gmon_start__"`.
 
-```bash
+```
 [sekai@void crackmes.one]$ cp noprelo noprelo_patched 
 [sekai@void crackmes.one]$ r2 -w ./noprelo_patched 
 WARN: Relocs has not been applied. Please use `-e bin.relocs.apply=true` or `-e bin.cache=true` next time
