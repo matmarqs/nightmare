@@ -444,3 +444,251 @@ int main(
 $ ./half-twins aaaabbbb aaaacccc
 Abby & Gabby: yaayy!! nice job! :D
 ```
+
+
+# `mbtu`
+
+The binary is 32-bit and has **No PIE enabled**.
+
+```
+$ file mbtu
+mbtu: ELF 32-bit LSB executable, Intel i386, version 1, for GNU/Linux 2.4.1, dynamically linked, interpreter /lib/ld-linux.so.2, no section header
+$ pwn checksec mbtu
+[!] Did not find any GOT entries
+[*] '/home/sekai/code/nightmare/workdir/ctf/hackaday-u/session-4/exercises/crackmes.one/mbtu'
+    Arch:       i386-32-little
+    RELRO:      No RELRO
+    Stack:      No canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x8048000)
+```
+
+## Patching the corrupted binary
+
+First of all, I tried to run the binary directly. It always **segfaults**. Inspecting in GDB, it segfaults in address `0x80485c1`.
+
+```
+$ gdb ./mbtu
+Reading symbols from ./mbtu...
+(No debugging symbols found in ./mbtu)
+(gdb) starti
+Starting program: /home/sekai/code/nightmare/workdir/ctf/hackaday-u/session-4/exercises/crackmes.one/mbtu
+
+Program stopped.
+0xf7fe58f0 in _start () from /lib/ld-linux.so.2
+(gdb) ni
+0xf7fe58f2 in _start () from /lib/ld-linux.so.2
+(gdb)
+0xf7fe58f5 in _start () from /lib/ld-linux.so.2
+(gdb)
+0xf7fe58f6 in _start () from /lib/ld-linux.so.2
+(gdb)
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/usr/lib64/libthread_db.so.1".
+0xf7fe58fb in _start () from /lib/ld-linux.so.2
+(gdb)
+0xf7fe58fe in _dl_start_user () from /lib/ld-linux.so.2
+(gdb)
+0xf7fe5900 in _dl_start_user () from /lib/ld-linux.so.2
+(gdb)
+0xf7fe58e0 in ?? () from /lib/ld-linux.so.2
+
+<SNIP>
+
+(gdb)
+0x0804840b in ?? ()
+(gdb)
+0x080483b0 in ?? ()
+(gdb)
+0x080483b6 in ?? ()
+(gdb)
+
+Program received signal SIGSEGV, Segmentation fault.
+0x080485c1 in ?? ()
+(gdb)
+
+Program terminated with signal SIGSEGV, Segmentation fault.
+The program no longer exists.
+```
+
+The output of `strace` is:
+```
+$ strace ./mbtu
+execve("./mbtu", ["./mbtu"], 0x7ffe71364e70 /* 71 vars */) = 0
+[ Process PID=16119 runs in 32 bit mode. ]
+brk(NULL)                               = 0x8892000
+mmap2(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xf7ef9000
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_LARGEFILE|O_CLOEXEC) = 3
+statx(3, "", AT_STATX_SYNC_AS_STAT|AT_NO_AUTOMOUNT|AT_EMPTY_PATH, STATX_BASIC_STATS, {stx_mask=STATX_BASIC_STATS|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFREG|0644, stx_size=80263, ...}) = 0
+mmap2(NULL, 80263, PROT_READ, MAP_PRIVATE, 3, 0) = 0xf7ee5000
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/lib32/libc.so.6", O_RDONLY|O_LARGEFILE|O_CLOEXEC) = 3
+read(3, "\177ELF\1\1\1\3\0\0\0\0\0\0\0\0\3\0\3\0\1\0\0\0\340d\2\0004\0\0\0"..., 512) = 512
+statx(3, "", AT_STATX_SYNC_AS_STAT|AT_NO_AUTOMOUNT|AT_EMPTY_PATH, STATX_BASIC_STATS, {stx_mask=STATX_BASIC_STATS|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFREG|0755, stx_size=13015676, ...}) = 0
+mmap2(NULL, 2275600, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0xf7cb9000
+mmap2(0xf7cdc000, 1703936, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x23000) = 0xf7cdc000
+mmap2(0xf7e7c000, 376832, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1c3000) = 0xf7e7c000
+mmap2(0xf7ed8000, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x21f000) = 0xf7ed8000
+mmap2(0xf7edb000, 39184, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0xf7edb000
+close(3)                                = 0
+set_thread_area({entry_number=-1, base_addr=0xf7efa440, limit=0x0fffff, seg_32bit=1, contents=0, read_exec_only=0, limit_in_pages=1, seg_not_present=0, useable=1}) = 0 (entry_number=12)
+set_tid_address(0xf7efa4a8)             = 16119
+set_robust_list(0xf7efa4ac, 12)         = 0
+rseq(0xf7efa3c0, 0x20, 0, 0x53053053)   = 0
+mprotect(0xf7ed8000, 8192, PROT_READ)   = 0
+mprotect(0xf7f35000, 8192, PROT_READ)   = 0
+ugetrlimit(RLIMIT_STACK, {rlim_cur=8192*1024, rlim_max=RLIM_INFINITY}) = 0
+munmap(0xf7ee5000, 80263)               = 0
+mprotect(0x8048000, 242, PROT_READ|PROT_WRITE) = 0
+--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_ACCERR, si_addr=0x80485c1} ---
++++ killed by SIGSEGV +++
+Segmentation fault
+```
+
+The key line is
+```
+mprotect(0x8048000, 242, PROT_READ|PROT_WRITE) = 0
+--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_ACCERR, si_addr=0x80485c1} ---
+```
+
+From Linux man pages:
+```
+mprotect(2)                   System Calls Manual                  mprotect(2)
+
+NAME
+       mprotect, pkey_mprotect - set protection on a region of memory
+
+SYNOPSIS
+       #include <sys/mman.h>
+
+       int mprotect(size_t size;
+                    void addr[size], size_t size, int prot);
+
+DESCRIPTION
+       mprotect() changes the access protections for the calling process's
+       memory pages containing any part of the address range in the interval
+       [addr, addr+size-1].  addr must be aligned to a page boundary.
+
+       If the calling process tries to access memory in a manner that violates
+       the protections, then the kernel generates a SIGSEGV signal for the
+       process.
+
+       prot is a combination of the following access flags: PROT_NONE or a
+       bitwise OR of the other values in the following list:
+
+       PROT_NONE
+              The memory cannot be accessed at all.
+
+       PROT_READ
+              The memory can be read.
+
+       PROT_WRITE
+              The memory can be modified.
+
+       PROT_EXEC
+              The memory can be executed.
+```
+
+ChatGPT says:
+
+The binary successfully requested read-write permission on the code page, but it immediately segfaults on a memory access error (`SEGV_ACCERR`) at address `0x80485c1`.
+
+Why this happens despite `mprotect` succeeding?
+
+* The binary tries to execute code in a page that currently does not have execute permission.
+* The binary calls mprotect with only `PROT_READ|PROT_WRITE` but not `PROT_EXEC`.
+* Modern Linux kernel enforces **W^X (write xor execute)** policies strictly. Pages with write permission but without execute permission will cause a fault on code execution.
+* The binary **never adds the `PROT_EXEC` flag**, so the CPU forbids instruction fetches at `0x80485c1` causing the fault.
+
+How to fix it?
+
+* Patch the binary to add `PROT_EXEC` to the `mprotect` call
+* Find the `mprotect` syscall invocation in the binary.
+* Change the flags parameter from `PROT_READ|PROT_WRITE` (`0x3`) to `PROT_READ|PROT_WRITE|PROT_EXEC` (`0x7`).
+
+In `radare2` we get the following disassembly around this region:
+```
+[0x080485c1]> pd-- 10
+            0x080485a7      8945fc         mov dword [ebp - 4], eax
+            0x080485aa      83ec04         sub esp, 4
+            0x080485ad      6a03           push 3                      ; 3
+            0x080485af      8b55f4         mov edx, dword [ebp - 0xc]
+            0x080485b2      8b45f0         mov eax, dword [ebp - 0x10]
+            0x080485b5      29d0           sub eax, edx
+            0x080485b7      48             dec eax
+            0x080485b8      50             push eax
+            0x080485b9      ff75fc         push dword [ebp - 4]
+            0x080485bc      e81ffeffff     call sym.imp.mprotect
+            0x080485c1      83c410         add esp, 0x10               ; PROGRAM SEGFAULTS HERE
+            0x080485c4      85c0           test eax, eax
+        ┌─< 0x080485c6      740a           je 0x80485d2
+        │   0x080485c8      83ec0c         sub esp, 0xc
+        │   0x080485cb      6a01           push 1                      ; 1
+        │   0x080485cd      e84efeffff     call sym.imp.exit
+        └─> 0x080485d2      c745f80100..   mov dword [ebp - 8], 1
+            0x080485d9      8b45f0         mov eax, dword [ebp - 0x10]
+            0x080485dc      48             dec eax
+            0x080485dd      3945f4         cmp dword [ebp - 0xc], eax
+```
+
+The instruction we want to patch is:
+```asm
+0x080485ad      6a03           push 3
+```
+
+In `radare2`:
+
+```
+(.venv) [sekai@void crackmes.one]$ cp mbtu mbtu_patched
+(.venv) [sekai@void crackmes.one]$ r2 -w ./mbtu_patched
+[0x08048460]> aaa
+INFO: Analyze all flags starting with sym. and entry0 (aa)
+INFO: Analyze imports (af@@@i)
+INFO: Analyze entrypoint (af@ entry0)
+INFO: Analyze symbols (af@@@s)
+INFO: Analyze all functions arguments/locals (afva@@@F)
+INFO: Analyze function calls (aac)
+INFO: Analyze len bytes of instructions for references (aar)
+INFO: Finding and parsing C++ vtables (avrr)
+INFO: Analyzing methods (af @@ method.*)
+INFO: Recovering local variables (afva@@@F)
+INFO: Type matching analysis for all functions (aaft)
+INFO: Propagate noreturn information (aanr)
+INFO: Use -AA or aaaa to perform additional experimental analysis
+[0x08048460]> s 0x80485ad
+[0x080485ad]> pd 20
+            0x080485ad      6a03           push 3                      ; 3
+            0x080485af      8b55f4         mov edx, dword [ebp - 0xc]
+            0x080485b2      8b45f0         mov eax, dword [ebp - 0x10]
+            0x080485b5      29d0           sub eax, edx
+            0x080485b7      48             dec eax
+            0x080485b8      50             push eax
+            0x080485b9      ff75fc         push dword [ebp - 4]
+            0x080485bc      e81ffeffff     call sym.imp.mprotect
+            0x080485c1      83c410         add esp, 0x10
+            0x080485c4      85c0           test eax, eax
+        ┌─< 0x080485c6      740a           je 0x80485d2
+        │   0x080485c8      83ec0c         sub esp, 0xc
+        │   0x080485cb      6a01           push 1                      ; 1
+        │   0x080485cd      e84efeffff     call sym.imp.exit           ; void exit(int status)
+        │   ; CODE XREF from fcn.080484e4 @ +0xe2(x)
+        └─> 0x080485d2      c745f80100..   mov dword [ebp - 8], 1
+│           ; CODE XREF from main @ 0x8048609(x)
+│           0x080485d9      8b45f0         mov eax, dword [ebp - 0x10]
+│           0x080485dc      48             dec eax
+│           0x080485dd      3945f4         cmp dword [ebp - 0xc], eax
+│       ┌─< 0x080485e0      7202           jb 0x80485e4
+│      ┌──< 0x080485e2      eb27           jmp 0x804860b
+[0x080485ad]> wa push 7
+INFO: Written 2 byte(s) (push 7) = wx 6a07 @ 0x080485ad
+[0x080485ad]> q
+```
+
+Now the binary runs normally:
+```
+(.venv) [sekai@void crackmes.one]$ ./mbtu_patched
+..:: MoreBoredThanYou by niel anthony acuna ::..
+```
+
+## Cracking it
