@@ -1206,6 +1206,7 @@ int main() {
     // };
 
     if (connect(fd, (struct sockaddr *) &addr, 0x10) == 0) {
+        /* enter here if the connection to port 5143 on localhost in successful */
         printf("cracked!\n");
     }
 
@@ -1226,9 +1227,6 @@ Ncat: Listening on 0.0.0.0:5143
 [sekai@void crackmes.one]$ ./mbtu_patched
 ..:: MoreBoredThanYou by niel anthony acuna ::..
 cracked!
-[sekai@void crackmes.one]$ pg 5143
-sekai    15557  0.0  0.0  11524  4656 pts/6    T    23:18   0:00 nc -lvnp 5143
-sekai    15561  0.0  0.0   6612  2708 pts/6    S+   23:19   0:00 grep --color=auto -i 5143
 [sekai@void crackmes.one]$ fg
 nc -lvnp 5143
 Ncat: Connection from 127.0.0.1:33628.
