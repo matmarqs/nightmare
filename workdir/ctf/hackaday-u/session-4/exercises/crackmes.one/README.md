@@ -692,3 +692,545 @@ Now the binary runs normally:
 ```
 
 ## Cracking it
+
+If we seek to the `main` (address `0x08048460`) function in `radare2`, we see that the assembly looks weird. There are some instructions that do not make any sense.
+It seems they are **encrypted**.
+
+```
+[0x08048460]> afl
+0x080483c0    1      6 sym.imp.close
+0x080483d0    1      6 sym.imp.getenv
+0x080483e0    1      6 sym.imp.mprotect
+0x080483f0    1      6 sym.imp.ptrace
+0x08048400    1      6 sym.imp.__libc_start_main
+0x08048410    1      6 sym.imp.printf
+0x08048420    1      6 sym.imp.exit
+0x08048430    1      6 sym.imp.htons
+0x08048440    1      6 sym.imp.connect
+0x08048450    1      6 sym.imp.socket
+0x08048460    1     33 entry0
+0x0804860d    9    109 main
+0x080484e4    4     42 fcn.080484e4
+0x080487b4    3     36 fcn.080487b4
+0x0804848d    3     25 fcn.0804848d
+0x080487b0    1      4 fcn.080487b0
+0x08048398    1     23 fcn.08048398
+0x08048484    1      9 fcn.08048484
+0x080487d8    1     27 fcn.080487d8
+0x080484a8    6     58 fcn.080484a8
+[0x08048460]> s main
+[0x0804860d]> pdf
+       ╎    ; DATA XREF from entry0 @ 0x8048477(r)
+       ╎    ; DATA XREFS from fcn.080484e4 @ +0x32(r), +0xad(w)
+┌ 109: int main (int argc, char **argv, char **envp);
+│      ╎    0x0804860d      54             push esp
+│      ╎    0x0804860e      8ae0           mov ah, al
+│      ╎    0x08048610      84e5           test ch, ah
+│      ╎    0x08048612      238eebe1ab15   and ecx, dword [esi + 0x15abe1eb]
+│      ╎    0x08048618      17             pop ss
+│      ╎    0x08048619      191b           sbb dword [ebx], ebx
+│      ╎    0x0804861b      34db           xor al, 0xdb                ; 219
+│      ╎    0x0804861d      a2cf294f09     mov byte [0x94f29cf], al    ; [0x94f29cf:1]=255
+│      ╎    0x08048622      a32927d995     mov dword [0x95d92729], eax ; [0x95d92729:4]=-1
+│      ╎    0x08048627      c8c8c6b8       enter 0xffffffffffffc6c8, 0xffffffffffffffb8
+│      ╎    0x0804862b      f9             stc
+│      ╎    0x0804862c      2f             das
+│      ╎    0x0804862d      c483314dcaa7   les eax, [ebx - 0x5835b2cf]
+│      ╎    0x08048633      41             inc ecx
+│      ╎    0x08048634      2551bbb0aa     and eax, 0xaab0bb51
+│      ╎    0x08048639      a6             cmpsb byte [esi], byte es:[edi]
+│      ╎    0x0804863a      a4             movsb byte es:[edi], byte [esi]
+│      ╎    0x0804863b      37             aaa
+│      ╎    0x0804863c      5f             pop edi
+│      ╎    0x0804863d      0b626b         or esp, dword [edx + 0x6b]
+│      ╎    0x08048640      036f07         add ebp, dword [edi + 7]
+│      └──< 0x08048643      e1a3           loope 0x80485e8
+│           0x08048645      f0             invalid
+..
+```
+
+Looking at `_DT_INIT` in Ghidra, we see:
+```c
+void _DT_INIT(void)
+
+{
+  FUN_08048484();
+  FUN_080484e4();
+  FUN_080487b4();
+  return;
+}
+```
+
+In particular, the function `FUN_080487b4()` looks suspicious:
+
+```c
+undefined4 __regparm3 FUN_080487b4(undefined4 param_1,undefined4 param_2)
+{
+  code *pcVar1;
+  undefined **ppuVar2;
+
+  ppuVar2 = &PTR_FUN_08049888;
+  pcVar1 = (code *)PTR_FUN_08049888;
+  if (PTR_FUN_08049888 != (undefined *)0xffffffff) {
+    do {
+      ppuVar2 = ppuVar2 + -1;
+      (*pcVar1)();
+      pcVar1 = (code *)*ppuVar2;
+    } while (pcVar1 != (code *)0xffffffff);
+  }
+  return param_2;
+}
+```
+
+In Ghidra, we see this data layout:
+```
+                         //
+                         // segment_3 
+                         // Loadable segment  [0x8049880 - 0x80499af] (zero-ex
+                         // ram:08049880-ram:080499af
+                         //
+                         DAT_08049880                              XREF[6]:   0804809c(*), 
+                                                                               FUN_08048700:0804871b(*), 
+                                                                               FUN_08048700:08048721(*), 
+                                                                               FUN_08048700:08048740(R), 
+                                                                               FUN_08048760:08048778(*), 
+                                                                               FUN_08048760:0804877e(*)  
+      08049880 ff ff ff      undefin   FFFFFFFFh
+                         PTR_FUN_08049884                          XREF[2]:   FUN_08048700:08048740(R), 
+                                                                               pre_entry:080487cd(R)  
+      08049884 10 85 04      addr      FUN_08048510
+                         PTR_FUN_08049888                          XREF[2]:   pre_entry:080487b9(R), 
+                                                                               pre_entry:080487c1(*)  
+      08049888 8b 85 04      addr      FUN_0804858b
+      0804988c 00            ??        00h
+      0804988d 00            ??        00h
+      0804988e 00            ??        00h
+      0804988f 00            ??        00h
+      08049890 ff            ??        FFh
+      08049891 ff            ??        FFh
+      08049892 ff            ??        FFh
+      08049893 ff            ??        FFh
+```
+
+The pointer `PTR_FUN_08049888` storages the function `FUN_0804858b`. We see that first `pcVar1 = FUN_0804858b`.
+
+The following code basically executes the two functions in sequence: `FUN_0804858b`, `FUN_08048510`. It stops at `DAT_08049880` because it points to the data `FFFFFFFFh`.
+```c
+ppuVar2 = &PTR_FUN_08049888;
+pcVar1 = (code *)PTR_FUN_08049888;
+if (PTR_FUN_08049888 != (undefined *)0xffffffff) {
+  do {
+    ppuVar2 = ppuVar2 + -1;
+    (*pcVar1)();
+    pcVar1 = (code *)*ppuVar2;
+  } while (pcVar1 != (code *)0xffffffff);
+}
+```
+
+The first function `FUN_0804858b` is renamed to `mprotect_and_xor_on_main()` and is reversed as follows:
+```c
+void mprotect_and_xor_on_main(void)
+{
+  int mprotect_ret;
+  byte *main_i;
+  int count;
+
+  main_i = &main;   // main = 0x804860d
+  mprotect_ret = mprotect(&Elf32_Ehdr_08048000,0xf2,7);
+  if (mprotect_ret != 0) {
+    exit(1);
+  }
+  count = 1;
+  for (; main_i < &DAT_080486ff; main_i = main_i + 1) { // 0x80486ff is supposedly the final of the main() function
+    if (100 < count) {
+      count = 1;
+    }
+    *main_i = (byte)count ^ *main_i;
+    count = count + 2;
+  }
+  return;
+}
+```
+
+The first function:
+* Sets the memory region `0x8048000 -- 0x80480f2` to have read, write and execute permissions.
+* Applies XOR operations to the `main` function region `0x804860d -- 0x80486fe`, effectively **decrypting it**.
+
+The second funtion `FUN_08048510` is renamed to `checksum_main()` is reversed as follows:
+```c
+void checksum_main(void)
+{
+    byte *b;
+    uint i;
+    uint checksum;
+
+    checksum = 0;
+    i = 0;
+    for (b = &main; b < &end_of_main; b = b + 1) {
+        checksum = checksum ^ *b ^ i;
+        i = i + 1;
+    }
+    if (checksum != precalculated_main_checksum) {  // precalculated_main_checksum = 0xec
+        exit(0);
+    }
+    return;
+}
+```
+
+* It verifies if the `main()` function, after decryption, has the correct checksum. If not, the program exits.
+
+Now we decrypt the `main()` function with the following program:
+```c
+#include <stdio.h>
+
+char main_bytes[] = {
+0x54, 0x8a, 0xe0, 0x84, 0xe5, 0x23, 0x8e, 0xeb, 0xe1, 0xab, 0x15, 0x17, 0x19, 0x1b, 0x34, 0xdb, 0xa2, 0xcf, 0x29, 0x4f, 0x09, 0xa3, 0x29, 0x27,
+0xd9, 0x95, 0xc8, 0xc8, 0xc6, 0xb8, 0xf9, 0x2f, 0xc4, 0x83, 0x31, 0x4d, 0xca, 0xa7, 0x41, 0x25, 0x51, 0xbb, 0xb0, 0xaa, 0xa6, 0xa4, 0x37, 0x5f,
+0x0b, 0x62, 0x6b, 0x03, 0x6f, 0x07, 0xe1, 0xa3, 0xf0, 0xf0, 0xee, 0x90, 0xd1, 0x07, 0x9c, 0xdb, 0x69, 0x15, 0xa2, 0xcf, 0x29, 0x4d, 0x29, 0xc3,
+0xea, 0xd2, 0xce, 0xcc, 0xdd, 0x85, 0xc7, 0xc4, 0xc2, 0xbc, 0xad, 0x4f, 0x2d, 0x07, 0xc1, 0x4f, 0x45, 0xa7, 0xf4, 0xae, 0xaa, 0xa8, 0xda, 0x9f,
+0x4d, 0xdc, 0x8d, 0x67, 0x6b, 0x03, 0x6f, 0x06, 0x63, 0x09, 0xe5, 0xdb, 0xec, 0xec, 0xea, 0x94, 0xdd, 0x0b, 0x94, 0x5a, 0xd5, 0xa0, 0x58, 0xd3,
+0xd6, 0x5e, 0x27, 0xac, 0xdd, 0x3f, 0x5f, 0x36, 0xd1, 0xb5, 0xc0, 0xc0, 0xbe, 0xab, 0x3c, 0xb9, 0xb6, 0xb4, 0x2b, 0x88, 0x14, 0x8b, 0x57, 0x57,
+0xda, 0xb7, 0x51, 0x37, 0x76, 0x77, 0x01, 0x03, 0xed, 0x81, 0xf4, 0xf4, 0xf2, 0x8c, 0xd5, 0x03, 0x73, 0x9e, 0x5c, 0xc1, 0xda, 0x5a, 0xfd, 0x5c,
+0x25, 0x27, 0x28, 0xa8, 0xc1, 0x2b, 0x5b, 0x23, 0xb8, 0x72, 0xe1, 0x6b, 0xc2, 0x4a, 0xb5, 0xab, 0x32, 0xba, 0xb6, 0xb4, 0xce, 0x8b, 0x41, 0xd6,
+0x95, 0x22, 0x49, 0xd8, 0xb1, 0x53, 0x09, 0x11, 0x89, 0x07, 0x0d, 0xef, 0x3a, 0xf6, 0xf2, 0xf0, 0x92, 0xd7, 0x05, 0xff, 0x32, 0xe5, 0xe2, 0xe0,
+0xa2, 0xcf, 0x29, 0xd8, 0x5c, 0xdf, 0xc5, 0xff, 0xcd, 0xcc, 0xca, 0xb4, 0xfd, 0x2b, 0x85, 0x3f, 0x41, 0x43, 0x45, 0x8e, 0x8a, 0xdb, 0xdd, 0xdf,
+0xc1, 0xc3,
+0x00, // extra null byte, just to mark the end
+};
+
+int main() {
+    int count = 1;
+    for (int i = 0; main_bytes[i] != '\0'; i++) {
+        if (count > 100) {
+            count = 1;
+        }
+        putchar(count ^ main_bytes[i]);
+        count = count + 2;
+    }
+}
+```
+
+We get from `radare2` the following disassembly:
+
+```
+[sekai@void crackmes.one]$ gcc decrypt_mbtu.c && ./a.out > decrypted_mbtu_main.rawbin
+[sekai@void crackmes.one]$ r2 decrypted_mbtu_main.rawbin
+[0x00000000]> pd
+            0x00000000      55             push rbp
+            0x00000001      89e5           mov ebp, esp
+            0x00000003      83ec28         sub esp, 0x28
+            0x00000006      83e4f0         and esp, 0xfffffff0
+            0x00000009      b800000000     mov eax, 0
+            0x0000000e      29c4           sub esp, eax
+            0x00000010      83ec0c         sub esp, 0xc
+            0x00000013      6820880408     push 0x8048820
+            0x00000018      e8a6fdffff     call 0xfffffffffffffdc3
+            0x0000001d      83c410         add esp, 0x10
+            0x00000020      85c0           test eax, eax
+        ┌─< 0x00000022      740a           je 0x2e
+        │   0x00000024      83ec0c         sub esp, 0xc
+        │   0x00000027      6a00           push 0
+        │   0x00000029      e8e5fdffff     call 0xfffffffffffffe13
+        └─> 0x0000002e      6a00           push 0
+            0x00000030      6a01           push 1
+            0x00000032      6a00           push 0
+            0x00000034      6a00           push 0
+            0x00000036      e8a8fdffff     call 0xfffffffffffffde3
+            0x0000003b      83c410         add esp, 0x10
+            0x0000003e      85c0           test eax, eax
+        ┌─< 0x00000040      740a           je 0x4c
+        │   0x00000042      83ec0c         sub esp, 0xc
+        │   0x00000045      6a00           push 0
+        │   0x00000047      e8c7fdffff     call 0xfffffffffffffe13
+        └─> 0x0000004c      e8b2feffff     call 0xffffffffffffff03
+            0x00000051      83ec0c         sub esp, 0xc
+            0x00000054      6840880408     push 0x8048840
+            0x00000059      e8a5fdffff     call 0xfffffffffffffe03
+            0x0000005e      83c410         add esp, 0x10
+            0x00000061      83ec04         sub esp, 4
+            0x00000064      6a00           push 0
+            0x00000066      6a01           push 1
+            0x00000068      6a02           push 2
+            0x0000006a      e8d4fdffff     call 0xfffffffffffffe43
+            0x0000006f      83c410         add esp, 0x10
+            0x00000072      8945f4         mov dword [rbp - 0xc], eax
+            0x00000075      837df4ff       cmp dword [rbp - 0xc], 0xffffffff
+        ┌─< 0x00000079      750a           jne 0x85
+        │   0x0000007b      83ec0c         sub esp, 0xc
+        │   0x0000007e      6a01           push 1
+        │   0x00000080      e88efdffff     call 0xfffffffffffffe13
+        └─> 0x00000085      e879feffff     call 0xffffffffffffff03
+            0x0000008a      66c745d80200   mov word [rbp - 0x28], 2
+            0x00000090      83ec0c         sub esp, 0xc
+            0x00000093      6817140000     push 0x1417                 ; '\x17\x14'
+            0x00000098      e886fdffff     call 0xfffffffffffffe23
+            0x0000009d      83c410         add esp, 0x10
+            0x000000a0      668945da       mov word [rbp - 0x26], ax
+            0x000000a4      c745dc7f00..   mov dword [rbp - 0x24], 0x100007f ; '\x7f'
+            0x000000ab      83ec04         sub esp, 4
+            0x000000ae      6a10           push 0x10
+            0x000000b0      8d45d8         lea eax, [rbp - 0x28]
+            0x000000b3      50             push rax
+            0x000000b4      ff75f4         push qword [rbp - 0xc]
+            0x000000b7      e877fdffff     call 0xfffffffffffffe33
+            0x000000bc      83c410         add esp, 0x10
+            0x000000bf      85c0           test eax, eax
+        ┌─< 0x000000c1      7510           jne 0xd3
+        │   0x000000c3      83ec0c         sub esp, 0xc
+        │   0x000000c6      6872880408     push 0x8048872
+        │   0x000000cb      e833fdffff     call 0xfffffffffffffe03
+        │   0x000000d0      83c410         add esp, 0x10
+        └─> 0x000000d3      e82bfeffff     call 0xffffffffffffff03
+            0x000000d8      83ec0c         sub esp, 0xc
+            0x000000db      ff75f4         push qword [rbp - 0xc]
+            0x000000de      e8d0fcffff     call 0xfffffffffffffdb3
+            0x000000e3      83c410         add esp, 0x10
+            0x000000e6      b800000000     mov eax, 0
+            0x000000eb      c9             leave
+            0x000000ec      c3             ret
+```
+
+The instructions like `call 0xfffffffffffffdc3` are because of *position independent code*. The offset of `main` in the original program is `0x804860d`.
+I asked ChatGPT to write a `python` script to get the real addresses of the function calls.
+
+```py
+import re
+
+# Base virtual address where code is loaded
+base_address = 0x804860d
+
+# Raw decrypted disassembly
+disassembly = """
+<PASTE-ASSEMBLY-HERE>
+"""
+
+# Regular expression to match call instructions and extract offset
+call_pattern = re.compile(r'0x([0-9a-f]+)\s+e8([0-9a-f]{8})\s+call\s+0x([0-9a-f]+)', re.IGNORECASE)
+
+def resolve_call_targets(disassembly, base_address):
+    results = []
+
+    for match in call_pattern.finditer(disassembly):
+        offset_str, rel_bytes, target_str = match.groups()
+        offset = int(offset_str, 16)
+        rel = int.from_bytes(bytes.fromhex(rel_bytes), byteorder='little', signed=True)
+
+        instruction_addr = base_address + offset
+        next_instr_addr = instruction_addr + 5
+        resolved_addr = next_instr_addr + rel
+
+        results.append({
+            "instruction_offset": offset,
+            "relative_offset": rel,
+            "resolved_address": resolved_addr
+        })
+
+    return results
+
+# Run the resolver
+resolved_calls = resolve_call_targets(disassembly, base_address)
+
+# Print results
+for call in resolved_calls:
+    print(f"0x{call['instruction_offset']:08x} -> call 0x{call['resolved_address']:08x}")
+```
+
+The output is
+```
+$ python3 mbtu_resolve_calls_addr.py
+0x00000018 -> call 0x080483d0
+0x00000029 -> call 0x08048420
+0x00000036 -> call 0x080483f0
+0x00000047 -> call 0x08048420
+0x0000004c -> call 0x08048510
+0x00000059 -> call 0x08048410
+0x0000006a -> call 0x08048450
+0x00000080 -> call 0x08048420
+0x00000085 -> call 0x08048510
+0x00000098 -> call 0x08048430
+0x000000b7 -> call 0x08048440
+0x000000cb -> call 0x08048410
+0x000000d3 -> call 0x08048510
+0x000000de -> call 0x080483c0
+```
+
+Each of these addresses resolute to some `libc` function, which we can see in Ghidra:
+```
+0x00000018 -> call 0x080483d0 -> getenv
+0x00000029 -> call 0x08048420 -> exit
+0x00000036 -> call 0x080483f0 -> ptrace
+0x00000047 -> call 0x08048420 -> exit
+0x0000004c -> call 0x08048510 -> checksum_main
+0x00000059 -> call 0x08048410 -> printf
+0x0000006a -> call 0x08048450 -> socket
+0x00000080 -> call 0x08048420 -> exit
+0x00000085 -> call 0x08048510 -> checksum_main
+0x00000098 -> call 0x08048430 -> htons
+0x000000b7 -> call 0x08048440 -> connect
+0x000000cb -> call 0x08048410 -> printf
+0x000000d3 -> call 0x08048510 -> checksum_main
+0x000000de -> call 0x080483c0 -> close
+```
+
+From this we can reverse the disassembly.
+```asm
+            0x00000000      55             push rbp
+            0x00000001      89e5           mov ebp, esp
+            0x00000003      83ec28         sub esp, 0x28
+            0x00000006      83e4f0         and esp, 0xfffffff0
+            0x00000009      b800000000     mov eax, 0
+            0x0000000e      29c4           sub esp, eax
+            0x00000010      83ec0c         sub esp, 0xc
+            0x00000013      6820880408     push 0x8048820   ; LD_PRELOAD
+            0x00000018      e8a6fdffff     call getenv      ; char *getenv(const char *name);
+            0x0000001d      83c410         add esp, 0x10
+            0x00000020      85c0           test eax, eax
+        ┌─< 0x00000022      740a           je 0x2e
+        │   0x00000024      83ec0c         sub esp, 0xc
+        │   0x00000027      6a00           push 0
+        │   0x00000029      e8e5fdffff     call exit        ; [[noreturn]] void exit(int status);
+        └─> 0x0000002e      6a00           push 0
+            0x00000030      6a01           push 1
+            0x00000032      6a00           push 0
+            0x00000034      6a00           push 0
+            0x00000036      e8a8fdffff     call ptrace      ; long ptrace(enum __ptrace_request op, pid_t pid, void *addr, void *data);
+            0x0000003b      83c410         add esp, 0x10
+            0x0000003e      85c0           test eax, eax
+        ┌─< 0x00000040      740a           je 0x4c
+        │   0x00000042      83ec0c         sub esp, 0xc
+        │   0x00000045      6a00           push 0
+        │   0x00000047      e8c7fdffff     call exit        ; [[noreturn]] void exit(int status);
+        └─> 0x0000004c      e8b2feffff     call checksum_main   ; void checksum_main(void)
+            0x00000051      83ec0c         sub esp, 0xc
+            0x00000054      6840880408     push 0x8048840
+            0x00000059      e8a5fdffff     call printf  ; int printf(const char *restrict format, ...);
+            0x0000005e      83c410         add esp, 0x10
+            0x00000061      83ec04         sub esp, 4
+            0x00000064      6a00           push 0
+            0x00000066      6a01           push 1
+            0x00000068      6a02           push 2
+            0x0000006a      e8d4fdffff     call socket  ; int socket(int domain, int type, int protocol);
+            0x0000006f      83c410         add esp, 0x10
+            0x00000072      8945f4         mov dword [rbp - 0xc], eax
+            0x00000075      837df4ff       cmp dword [rbp - 0xc], 0xffffffff
+        ┌─< 0x00000079      750a           jne 0x85
+        │   0x0000007b      83ec0c         sub esp, 0xc
+        │   0x0000007e      6a01           push 1
+        │   0x00000080      e88efdffff     call exit        ; [[noreturn]] void exit(int status);
+        └─> 0x00000085      e879feffff     call checksum_main   ; void checksum_main(void);
+            0x0000008a      66c745d80200   mov word [rbp - 0x28], 2
+            0x00000090      83ec0c         sub esp, 0xc
+            0x00000093      6817140000     push 0x1417                 ; '\x17\x14'
+            0x00000098      e886fdffff     call htons   ; uint16_t htons(uint16_t hostshort);
+            0x0000009d      83c410         add esp, 0x10
+            0x000000a0      668945da       mov word [rbp - 0x26], ax
+            0x000000a4      c745dc7f00..   mov dword [rbp - 0x24], 0x100007f ; '\x7f'
+            0x000000ab      83ec04         sub esp, 4
+            0x000000ae      6a10           push 0x10
+            0x000000b0      8d45d8         lea eax, [rbp - 0x28]
+            0x000000b3      50             push rax
+            0x000000b4      ff75f4         push qword [rbp - 0xc]
+            0x000000b7      e877fdffff     call connect ; int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+            0x000000bc      83c410         add esp, 0x10
+            0x000000bf      85c0           test eax, eax
+        ┌─< 0x000000c1      7510           jne 0xd3
+        │   0x000000c3      83ec0c         sub esp, 0xc
+        │   0x000000c6      6872880408     push 0x8048872
+        │   0x000000cb      e833fdffff     call printf  ; int printf(const char *restrict format, ...);
+        │   0x000000d0      83c410         add esp, 0x10
+        └─> 0x000000d3      e82bfeffff     call checksum_main   ; void checksum_main(void);
+            0x000000d8      83ec0c         sub esp, 0xc
+            0x000000db      ff75f4         push qword [rbp - 0xc]
+            0x000000de      e8d0fcffff     call close   ; int close(int fd);
+            0x000000e3      83c410         add esp, 0x10
+            0x000000e6      b800000000     mov eax, 0
+            0x000000eb      c9             leave
+            0x000000ec      c3             ret
+```
+
+Manually reversing this:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ptrace.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+/* this function does not matter */
+void checksum_main() {
+    ;
+}
+
+int main() {
+    if (getenv("LD_PRELOAD")) {   // at address 0x8048820
+        exit(0);
+    }
+
+    if (ptrace(PTRACE_TRACEME, 0, 1, 0)) {  // PTRACE_TRACEME = 0
+        // exits if the program is being traced
+        exit(0);
+    }
+
+    checksum_main();
+
+    printf("..:: MoreBoredThanYou by niel anthony acuna ::..\n");
+
+ /* socket(2, 1, 0); */
+    int fd = socket(PF_INET, SOCK_STREAM, 0);   // ebp-0xc returns file descriptor on success, -1 if error
+    // The protocol specifies a particular protocol to be used with the
+    // socket.  Normally only a single protocol exists to support a particular
+    // socket type within a given protocol family, in which case protocol can
+    // be specified as 0.
+    if (fd == -1) {
+        exit(1);
+    }
+
+    checksum_main();
+
+    // connect to port 127.0.0.1:5143
+    struct sockaddr_in addr = {    // rbp-0x28
+        .sin_family = AF_INET,
+        .sin_port = htons(0x1417),
+        .sin_addr.s_addr = htonl(0x7f000001)  // 127.0.0.1
+    };
+    // int var_28h = 2;    // AF_INET = PF_INET = 2
+    // uint16_t var_26h = htons(0x1417);   // port 5143
+    // int var_24h = 0x100007f;    // 0x7f.0x00.0x00.0x01 = 127.0.0.1 = localhost
+    // Explanation: man 7 ip, man sockaddr
+    // struct sockaddr_in {
+    //     sa_family_t    sin_family; /* address family: AF_INET */
+    //     in_port_t      sin_port;   /* port in network byte order */
+    //     struct in_addr sin_addr;   /* internet address */
+    // };
+
+    if (connect(fd, (struct sockaddr *) &addr, 0x10) == 0) {
+        printf("cracked!\n");
+    }
+
+    checksum_main();
+    close(fd);
+    return 0;
+}
+```
+
+Therefore, in order to crack, we just need that the program successfully connects to port `5143` on `localhost`:
+```
+[sekai@void crackmes.one]$ nc -lvnp 5143
+Ncat: Version 7.95 ( https://nmap.org/ncat )
+Ncat: Listening on [::]:5143
+Ncat: Listening on 0.0.0.0:5143
+^Z
+[1]+  Stopped                 nc -lvnp 5143
+[sekai@void crackmes.one]$ ./mbtu_patched
+..:: MoreBoredThanYou by niel anthony acuna ::..
+cracked!
+[sekai@void crackmes.one]$ pg 5143
+sekai    15557  0.0  0.0  11524  4656 pts/6    T    23:18   0:00 nc -lvnp 5143
+sekai    15561  0.0  0.0   6612  2708 pts/6    S+   23:19   0:00 grep --color=auto -i 5143
+[sekai@void crackmes.one]$ fg
+nc -lvnp 5143
+Ncat: Connection from 127.0.0.1:33628.
+```
+
